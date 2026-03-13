@@ -1,0 +1,39 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Variables de entorno
+.env
+
+# Directorios temporales del proyecto
+tmp/
+logs/
+
+# Docker
+docker-compose.override.yml
+
+# Pytest y coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Mypy
+.mypy_cache/
+
+# Ruff
+.ruff_cache/
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# Dependencias
+requirements.txt
