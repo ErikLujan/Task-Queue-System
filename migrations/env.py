@@ -5,6 +5,7 @@ from alembic import context
 from src.core.config import settings
 from src.models.base import Base
 from src.models.job import Job  # noqa: F401
+from src.models.user import User
 
 config = context.config
 

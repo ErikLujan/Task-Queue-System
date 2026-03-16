@@ -24,6 +24,8 @@ dependencies = [
     "uvicorn>=0.41.0",
     "slowapi>=0.1.9",
     "python-multipart>=0.0.22",
+    "python-jose[cryptography]>=3.5.0",
+    "bcrypt>=5.0.0",
 ]
 
 [dependency-groups]

@@ -10,6 +10,8 @@ from src.core.exceptions import TaskEnqueueError, TaskNotFoundError, SecurityErr
 from src.core.logging import get_logger
 from src.core.rate_limiter import limiter
 from src.models.job import JobType
+from src.models.user import User
+from src.api.auth_dependencies import require_user
 from src.schemas.job import JobResponse, JobDetailResponse
 from src.schemas.task_payload import EmailTaskPayload, ImageTaskPayload, ReportTaskPayload
 from src.services.queue_service import enqueue_job, get_job
@@ -44,7 +46,6 @@ def _handle_enqueue(db: Session, job_type: JobType, payload) -> JobResponse:
     except TaskEnqueueError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
 
-
 @router.post(
     "/email",
     response_model=JobResponse,
@@ -57,6 +58,7 @@ def enqueue_email(
     payload: EmailTaskPayload,
     db: Session = Depends(get_db),
     _host: str = Depends(verify_host),
+    current_user: User = Depends(require_user),
 ) -> JobResponse:
     """
     Recibe un payload de email, lo valida y lo encola para procesamiento asíncrono.
@@ -72,7 +74,6 @@ def enqueue_email(
     logger.info("email_job_requested", recipient=payload.recipient)
     return _handle_enqueue(db, JobType.EMAIL, payload)
 
-
 @router.post(
     "/image",
     response_model=JobResponse,
@@ -85,6 +86,7 @@ def enqueue_image(
     payload: ImageTaskPayload,
     db: Session = Depends(get_db),
     _host: str = Depends(verify_host),
+    current_user: User = Depends(require_user),
 ) -> JobResponse:
     """
     Recibe un payload de imagen, lo valida y lo encola para procesamiento asíncrono.
@@ -100,7 +102,6 @@ def enqueue_image(
     logger.info("image_job_requested", filename=payload.filename)
     return _handle_enqueue(db, JobType.IMAGE, payload)
 
-
 @router.post(
     "/report",
     response_model=JobResponse,
@@ -113,6 +114,7 @@ def enqueue_report(
     payload: ReportTaskPayload,
     db: Session = Depends(get_db),
     _host: str = Depends(verify_host),
+    current_user: User = Depends(require_user),
 ) -> JobResponse:
     """
     Recibe un payload de reporte, lo valida y lo encola para procesamiento asíncrono.
@@ -128,7 +130,6 @@ def enqueue_report(
     logger.info("report_job_requested", dataset_id=payload.dataset_id)
     return _handle_enqueue(db, JobType.REPORT, payload)
 
-
 @router.get(
     "/{job_id}",
     response_model=JobResponse,
@@ -140,6 +141,7 @@ def get_job_status(
     job_id: str,
     db: Session = Depends(get_db),
     _host: str = Depends(verify_host),
+    current_user: User = Depends(require_user),
 ) -> JobResponse:
     """
     Retorna el estado actual de un job dado su ID.
@@ -167,7 +169,6 @@ def get_job_status(
     except TaskNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
-
 @router.get(
     "/{job_id}/detail",
     response_model=JobDetailResponse,
@@ -179,6 +180,7 @@ def get_job_detail(
     job_id: str,
     db: Session = Depends(get_db),
     _host: str = Depends(verify_host),
+    current_user: User = Depends(require_user),
 ) -> JobDetailResponse:
     """
     Retorna el detalle completo de un job incluyendo payload y resultado.
