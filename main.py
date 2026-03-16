@@ -13,6 +13,7 @@ from src.core.security_middleware import WAFMiddleware, SecurityHeadersMiddlewar
 from src.utils.file_utils import ensure_tmp_dirs
 from src.workers.beat_schedule import register_beat_schedule
 from src.api.routes import router
+from src.api.auth_routes import router as auth_router
 
 setup_logging()
 logger = get_logger(__name__)
@@ -48,6 +49,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
 app.add_middleware(CORSMiddleware, **CORS_CONFIG)
 
 app.include_router(router)
+app.include_router(auth_router)
 
 @app.get("/health", tags=["monitoring"])
 def health_check():
