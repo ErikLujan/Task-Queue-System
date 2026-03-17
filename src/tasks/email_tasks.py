@@ -1,12 +1,35 @@
 import uuid
 from celery import Task
-from celery.utils.log import get_task_logger
 
 from src.workers.celery_app import celery_app
 from src.core.config import settings
+from src.core.database import get_worker_db
+from src.core.logging import get_logger
 from src.core.exceptions import ValidationError
+from src.models.job import JobStatus
 
-logger = get_task_logger(__name__)
+logger = get_logger(__name__)
+
+def update_job_state(job_id: str, status: JobStatus, result: dict | None = None, error: str | None = None) -> None:
+    """
+    Actualiza el estado de un job en la DB desde el contexto de un worker.
+    Función auxiliar compartida por todas las tasks.
+
+    **Args:**
+        job_id: UUID del job a actualizar como string.
+        status: Nuevo estado a asignar al job.
+        result: Resultado de la tarea si fue exitosa.
+        error: Mensaje de error si la tarea falló.
+    """
+    from src.services.queue_service import update_job_status
+    with get_worker_db() as db:
+        update_job_status(
+            db=db,
+            job_id=uuid.UUID(job_id),
+            status=status,
+            result=result,
+            error_message=error,
+        )
 
 class BaseTask(Task):
     """
@@ -28,7 +51,10 @@ class BaseTask(Task):
             kwargs: Argumentos keyword de la tarea.
             einfo: Información del traceback.
         """
-        logger.error("task_permanent_failure", task_id=task_id, error=str(exc))
+        job_id = kwargs.get("job_id")
+        if job_id:
+            update_job_state(job_id, JobStatus.FAILURE, error=str(exc))
+        logger.error("task_permanent_failure", tid=task_id, error=str(exc))
 
     def on_retry(self, exc: Exception, task_id: str, args, kwargs, einfo) -> None:
         """
@@ -41,7 +67,10 @@ class BaseTask(Task):
             kwargs: Argumentos keyword de la tarea.
             einfo: Información del traceback.
         """
-        logger.warning("task_retrying", task_id=task_id, error=str(exc))
+        job_id = kwargs.get("job_id")
+        if job_id:
+            update_job_state(job_id, JobStatus.RETRYING)
+        logger.warning("task_retrying", tid=task_id, error=str(exc))
 
     def on_success(self, retval, task_id: str, args, kwargs) -> None:
         """
@@ -53,7 +82,7 @@ class BaseTask(Task):
             args: Argumentos posicionales de la tarea.
             kwargs: Argumentos keyword de la tarea.
         """
-        logger.info("task_success", task_id=task_id)
+        logger.info("task_success", tid=task_id)
 
 @celery_app.task(
     bind=True,
@@ -64,7 +93,7 @@ class BaseTask(Task):
 def send_email(self, job_id: str, payload: dict) -> dict:
     """
     Procesa el envío de un email de forma asíncrona.
-    Reintenta automáticamente ante fallos transitorios con backoff exponencial.
+    Actualiza el estado del job en DB en cada etapa del procesamiento.
 
     **Args:**
         job_id: UUID del job asociado a esta tarea.
@@ -81,21 +110,18 @@ def send_email(self, job_id: str, payload: dict) -> dict:
     if missing := required_fields - payload.keys():
         raise ValidationError(f"Campos faltantes en payload: {missing}")
 
-    try:
-        logger.info(
-            "sending_email",
-            job_id=job_id,
-            recipient=payload["recipient"],
-        )
+    update_job_state(job_id, JobStatus.RUNNING)
 
-        # Aquí se integraría el cliente SMTP real (smtplib, SendGrid, etc.)
-        # Por ahora simula el envío para mantener el foco en la arquitectura
+    try:
+        logger.info("sending_email", job_id=job_id, recipient=payload["recipient"])
+
         result = {
             "job_id": job_id,
             "recipient": payload["recipient"],
             "status": "sent",
         }
 
+        update_job_state(job_id, JobStatus.SUCCESS, result=result)
         logger.info("email_sent", job_id=job_id, recipient=payload["recipient"])
         return result
 
