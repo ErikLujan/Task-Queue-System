@@ -111,6 +111,8 @@ def generate_report(self, job_id: str, payload: dict) -> dict:
         ValidationError: Si el formato solicitado no está soportado.
         self.retry: Si ocurre un error inesperado durante la generación.
     """
+    webhook_url = payload.get("webhook_url")
+
     update_job_state(job_id, JobStatus.RUNNING)
 
     try:
@@ -127,7 +129,7 @@ def generate_report(self, job_id: str, payload: dict) -> dict:
         )
 
         result = {"job_id": job_id, "output_path": str(output_path)}
-        update_job_state(job_id, JobStatus.SUCCESS, result=result)
+        update_job_state(job_id, JobStatus.SUCCESS, result=result, webhook_url=webhook_url)
 
         logger.info("report_generated", format=report_type)
         return result

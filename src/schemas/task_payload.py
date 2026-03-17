@@ -1,4 +1,5 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, AnyHttpUrl, field_validator, model_validator, model_serializer
+from typing import Optional
 from src.core.security import sanitize_string
 
 class BasePayload(BaseModel):
@@ -7,6 +8,8 @@ class BasePayload(BaseModel):
     """
 
     model_config = {"str_strip_whitespace": True, "frozen": True}
+
+    webhook_url: Optional[AnyHttpUrl] = None # --> URL Opcional para las notificaciones
 
     @model_validator(mode="before")
     @classmethod
@@ -21,6 +24,19 @@ class BasePayload(BaseModel):
             k: sanitize_string(v, field_name=k) if isinstance(v, str) else v
             for k, v in values.items()
         }
+    
+    def model_dump(self, **kwargs) -> dict:
+        """
+        Sobreescribe model_dump para convertir AnyHttpUrl a string plano
+        antes de serializar — necesario para guardar en JSONB de PostgreSQL.
+
+        **Returns:**
+            Diccionario con todos los valores serializables a JSON.
+        """
+        data = super().model_dump(**kwargs)
+        if data.get("webhook_url") is not None:
+            data["webhook_url"] = str(data["webhook_url"])
+        return data
 
 class EmailTaskPayload(BasePayload):
     """
