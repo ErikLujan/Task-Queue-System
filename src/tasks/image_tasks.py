@@ -105,6 +105,8 @@ def process_image(self, job_id: str, payload: dict) -> dict:
         StorageError: Si no se puede guardar el resultado.
         self.retry: Si ocurre un error inesperado durante el procesamiento.
     """
+    webhook_url = payload.get("webhook_url")
+
     update_job_state(job_id, JobStatus.RUNNING)
 
     try:
@@ -132,7 +134,7 @@ def process_image(self, job_id: str, payload: dict) -> dict:
         processed.save(output_path, format=output_format.upper(), **save_kwargs)
 
         result = {"job_id": job_id, "output_path": str(output_path)}
-        update_job_state(job_id, JobStatus.SUCCESS, result=result)
+        update_job_state(job_id, JobStatus.SUCCESS, result=result, webhook_url=webhook_url)
 
         logger.info("image_processed", output=str(output_path))
         return result

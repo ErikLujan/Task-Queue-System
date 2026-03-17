@@ -10,7 +10,7 @@ from src.models.job import JobStatus
 
 logger = get_logger(__name__)
 
-def update_job_state(job_id: str, status: JobStatus, result: dict | None = None, error: str | None = None) -> None:
+def update_job_state(job_id: str, status: JobStatus, result: dict | None = None, error: str | None = None, webhook_url: str | None = None) -> None:
     """
     Actualiza el estado de un job en la DB desde el contexto de un worker.
     Función auxiliar compartida por todas las tasks.
@@ -20,6 +20,7 @@ def update_job_state(job_id: str, status: JobStatus, result: dict | None = None,
         status: Nuevo estado a asignar al job.
         result: Resultado de la tarea si fue exitosa.
         error: Mensaje de error si la tarea falló.
+        webhook_url: URL opcional para notificar el resultado.
     """
     from src.services.queue_service import update_job_status
     with get_worker_db() as db:
@@ -29,6 +30,18 @@ def update_job_state(job_id: str, status: JobStatus, result: dict | None = None,
             status=status,
             result=result,
             error_message=error,
+        )
+
+    if webhook_url and status in (JobStatus.SUCCESS, JobStatus.FAILURE):
+        from src.services.webhook_service import dispatch_webhook
+        dispatch_webhook(
+            webhook_url=str(webhook_url),
+            payload={
+                "job_id": job_id,
+                "status": status.value,
+                "result": result,
+                "error": error,
+            },
         )
 
 class BaseTask(Task):
@@ -110,6 +123,7 @@ def send_email(self, job_id: str, payload: dict) -> dict:
     if missing := required_fields - payload.keys():
         raise ValidationError(f"Campos faltantes en payload: {missing}")
 
+    webhook_url = payload.get("webhook_url")
     update_job_state(job_id, JobStatus.RUNNING)
 
     try:
@@ -121,7 +135,7 @@ def send_email(self, job_id: str, payload: dict) -> dict:
             "status": "sent",
         }
 
-        update_job_state(job_id, JobStatus.SUCCESS, result=result)
+        update_job_state(job_id, JobStatus.SUCCESS, result=result, webhook_url=webhook_url)
         logger.info("email_sent", job_id=job_id, recipient=payload["recipient"])
         return result
 
