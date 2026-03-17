@@ -6,16 +6,14 @@ from src.workers.celery_app import celery_app
 from src.core.config import settings
 from src.core.exceptions import ValidationError, StorageError
 from src.core.security import validate_file
-from src.tasks.email_tasks import BaseTask
+from src.models.job import JobStatus
+from src.tasks.email_tasks import BaseTask, update_job_state
 from src.utils.file_utils import get_output_path
-from celery.utils.log import get_task_logger
+from src.core.logging import get_logger
 
-logger = get_task_logger(__name__)
+logger = get_logger(__name__)
 
-# Dimensiones máximas permitidas para evitar ataques tipo "decompression bomb"
 _MAX_IMAGE_PIXELS = 50_000_000
-
-# Mapa de operaciones permitidas — cada clave apunta a su handler interno
 _OPERATION_HANDLERS: dict[str, callable] = {}
 
 def _register_operation(name: str):
@@ -81,7 +79,7 @@ def _apply_resize(img: Image.Image, width: int = 800, height: int = 600, **_) ->
 
 @_register_operation("compress")
 def _apply_compress(img: Image.Image, **_) -> Image.Image:
-    """Devuelve la imagen sin modificación; la compresión se aplica al guardar."""
+    """Devuelve la imagen sin modificación — la compresión se aplica al guardar."""
     return img
 
 @celery_app.task(
@@ -93,7 +91,7 @@ def _apply_compress(img: Image.Image, **_) -> Image.Image:
 def process_image(self, job_id: str, payload: dict) -> dict:
     """
     Aplica una secuencia de operaciones sobre una imagen de forma asíncrona.
-    Protege contra decompression bombs limitando el tamaño máximo de píxeles.
+    Actualiza el estado del job en DB en cada etapa del procesamiento.
 
     **Args:**
         job_id: UUID del job asociado a esta tarea.
@@ -107,11 +105,12 @@ def process_image(self, job_id: str, payload: dict) -> dict:
         StorageError: Si no se puede guardar el resultado.
         self.retry: Si ocurre un error inesperado durante el procesamiento.
     """
+    update_job_state(job_id, JobStatus.RUNNING)
+
     try:
         source_path = Path(settings.tmp_upload_dir) / payload["filename"]
         validate_file(source_path, settings.allowed_image_types)
 
-        # Protección contra decompression bomb
         Image.MAX_IMAGE_PIXELS = _MAX_IMAGE_PIXELS
 
         with Image.open(source_path) as img:
@@ -132,13 +131,16 @@ def process_image(self, job_id: str, payload: dict) -> dict:
 
         processed.save(output_path, format=output_format.upper(), **save_kwargs)
 
-        logger.info("image_processed", job_id=job_id, output=str(output_path))
-        return {"job_id": job_id, "output_path": str(output_path)}
+        result = {"job_id": job_id, "output_path": str(output_path)}
+        update_job_state(job_id, JobStatus.SUCCESS, result=result)
+
+        logger.info("image_processed", output=str(output_path))
+        return result
 
     except (ValidationError, UnidentifiedImageError) as exc:
-        logger.error("image_processing_invalid", job_id=job_id, error=str(exc))
+        logger.error("image_processing_invalid", error=str(exc))
         raise
 
     except Exception as exc:
-        logger.warning("image_processing_failed", job_id=job_id, error=str(exc))
+        logger.warning("image_processing_failed", error=str(exc))
         raise self.retry(exc=exc, countdown=2 ** self.request.retries)

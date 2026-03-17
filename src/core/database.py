@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from typing import Generator
 
 from sqlalchemy import create_engine
@@ -24,5 +25,27 @@ def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db
+    finally:
+        db.close()
+
+@contextmanager
+def get_worker_db() -> Generator[Session, None, None]:
+    """
+    Context manager que provee una sesión de DB para uso en workers de Celery.
+    A diferencia de get_db(), no depende del ciclo de vida de FastAPI.
+
+    **Yields:**
+        Sesión activa de SQLAlchemy.
+
+    **Raises:**
+        Exception: Cualquier error durante la sesión hace rollback automático.
+    """
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
