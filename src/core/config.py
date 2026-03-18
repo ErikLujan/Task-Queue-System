@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     flower_user: str = Field(min_length=1)
     flower_password: str = Field(min_length=1)
 
+    # Grafana
+    grafana_user: str = Field(min_length=1)
+    grafana_password: str = Field(min_length=1)
+
     @property
     def max_file_size_bytes(self) -> int:
         """Retorna el tamaño máximo de archivo en bytes."""

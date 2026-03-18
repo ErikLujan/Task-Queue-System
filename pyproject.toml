@@ -26,6 +26,7 @@ dependencies = [
     "python-multipart>=0.0.22",
     "python-jose[cryptography]>=3.5.0",
     "bcrypt>=5.0.0",
+    "prometheus-client>=0.24.1",
 ]
 
 [dependency-groups]
