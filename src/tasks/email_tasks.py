@@ -1,3 +1,4 @@
+import time
 import uuid
 from celery import Task
 
@@ -6,11 +7,19 @@ from src.core.config import settings
 from src.core.database import get_worker_db
 from src.core.logging import get_logger
 from src.core.exceptions import ValidationError
+from src.core.metrics import (
+    JOBS_TOTAL,
+    JOB_PROCESSING_SECONDS,
+    JOB_ERRORS_TOTAL,
+    JOB_RETRIES_TOTAL,
+)
 from src.models.job import JobStatus
 
 logger = get_logger(__name__)
 
-def update_job_state(job_id: str, status: JobStatus, result: dict | None = None, error: str | None = None, webhook_url: str | None = None) -> None:
+_job_start_times: dict[str, float] = {}
+
+def update_job_state(job_id: str, status: JobStatus, result: dict | None = None, error: str | None = None, webhook_url: str | None = None, job_type: str | None = None) -> None:
     """
     Actualiza el estado de un job en la DB desde el contexto de un worker.
     Función auxiliar compartida por todas las tasks.
@@ -21,6 +30,7 @@ def update_job_state(job_id: str, status: JobStatus, result: dict | None = None,
         result: Resultado de la tarea si fue exitosa.
         error: Mensaje de error si la tarea falló.
         webhook_url: URL opcional para notificar el resultado.
+        job_type: Tipo de job para métricas (email, image, report).
     """
     from src.services.queue_service import update_job_status
     with get_worker_db() as db:
@@ -31,6 +41,20 @@ def update_job_state(job_id: str, status: JobStatus, result: dict | None = None,
             result=result,
             error_message=error,
         )
+
+    if status == JobStatus.RUNNING:
+        _job_start_times[job_id] = time.perf_counter()
+
+    # Registrar métricas en estados finales
+    if job_type and status in (JobStatus.SUCCESS, JobStatus.FAILURE):
+        duration = time.perf_counter() - _job_start_times.pop(job_id, time.perf_counter())
+        JOB_PROCESSING_SECONDS.labels(job_type=job_type, status=status.value).observe(duration)
+
+        if status == JobStatus.FAILURE:
+            JOB_ERRORS_TOTAL.labels(job_type=job_type).inc()
+
+    if job_type and status == JobStatus.RETRYING:
+        JOB_RETRIES_TOTAL.labels(job_type=job_type).inc()
 
     if webhook_url and status in (JobStatus.SUCCESS, JobStatus.FAILURE):
         from src.services.webhook_service import dispatch_webhook
@@ -65,8 +89,11 @@ class BaseTask(Task):
             einfo: Información del traceback.
         """
         job_id = kwargs.get("job_id")
+        payload = kwargs.get("payload", {})
+        webhook_url = payload.get("webhook_url")
+        job_type = payload.get("job_type")
         if job_id:
-            update_job_state(job_id, JobStatus.FAILURE, error=str(exc))
+            update_job_state(job_id, JobStatus.FAILURE, error=str(exc), webhook_url=webhook_url, job_type=job_type)
         logger.error("task_permanent_failure", tid=task_id, error=str(exc))
 
     def on_retry(self, exc: Exception, task_id: str, args, kwargs, einfo) -> None:
@@ -81,8 +108,9 @@ class BaseTask(Task):
             einfo: Información del traceback.
         """
         job_id = kwargs.get("job_id")
+        job_type = kwargs.get("payload", {}).get("job_type")
         if job_id:
-            update_job_state(job_id, JobStatus.RETRYING)
+            update_job_state(job_id, JobStatus.RETRYING, job_type=job_type)
         logger.warning("task_retrying", tid=task_id, error=str(exc))
 
     def on_success(self, retval, task_id: str, args, kwargs) -> None:
@@ -124,7 +152,8 @@ def send_email(self, job_id: str, payload: dict) -> dict:
         raise ValidationError(f"Campos faltantes en payload: {missing}")
 
     webhook_url = payload.get("webhook_url")
-    update_job_state(job_id, JobStatus.RUNNING)
+    JOBS_TOTAL.labels(job_type="email").inc()
+    update_job_state(job_id, JobStatus.RUNNING, job_type="email")
 
     try:
         logger.info("sending_email", job_id=job_id, recipient=payload["recipient"])
@@ -135,7 +164,7 @@ def send_email(self, job_id: str, payload: dict) -> dict:
             "status": "sent",
         }
 
-        update_job_state(job_id, JobStatus.SUCCESS, result=result, webhook_url=webhook_url)
+        update_job_state(job_id, JobStatus.SUCCESS, result=result, webhook_url=webhook_url, job_type="email")
         logger.info("email_sent", job_id=job_id, recipient=payload["recipient"])
         return result
 

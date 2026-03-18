@@ -5,6 +5,7 @@ from pathlib import Path
 from src.workers.celery_app import celery_app
 from src.core.config import settings
 from src.core.exceptions import ValidationError
+from src.core.metrics import JOBS_TOTAL
 from src.models.job import JobStatus
 from src.tasks.email_tasks import BaseTask, update_job_state
 from src.services.storage_service import cleanup_directory
@@ -112,8 +113,8 @@ def generate_report(self, job_id: str, payload: dict) -> dict:
         self.retry: Si ocurre un error inesperado durante la generación.
     """
     webhook_url = payload.get("webhook_url")
-
-    update_job_state(job_id, JobStatus.RUNNING)
+    JOBS_TOTAL.labels(job_type="report").inc()
+    update_job_state(job_id, JobStatus.RUNNING, job_type="report")
 
     try:
         report_type = payload["report_type"]
@@ -129,7 +130,7 @@ def generate_report(self, job_id: str, payload: dict) -> dict:
         )
 
         result = {"job_id": job_id, "output_path": str(output_path)}
-        update_job_state(job_id, JobStatus.SUCCESS, result=result, webhook_url=webhook_url)
+        update_job_state(job_id, JobStatus.SUCCESS, result=result, webhook_url=webhook_url, job_type="report")
 
         logger.info("report_generated", format=report_type)
         return result
@@ -173,3 +174,23 @@ def system_health_check() -> dict:
     report = {"redis": {"status": "ok"}}
     logger.info("health_check", report=report)
     return report
+
+@celery_app.task(
+    name="src.tasks.report_tasks.refresh_metrics",
+    queue="default",
+)
+def refresh_metrics() -> dict:
+    """
+    Actualiza los gauges de Prometheus con el estado actual de los jobs en DB.
+    Ejecutada periódicamente por Celery Beat cada minuto.
+
+    **Returns:**
+        Diccionario confirmando la actualización.
+    """
+    from src.services.metrics_service import refresh_job_status_metrics
+    from src.core.database import get_worker_db
+
+    with get_worker_db() as db:
+        refresh_job_status_metrics(db)
+
+    return {"status": "metrics_refreshed"}

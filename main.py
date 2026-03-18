@@ -15,6 +15,11 @@ from src.workers.beat_schedule import register_beat_schedule
 from src.api.routes import router
 from src.api.auth_routes import router as auth_router
 
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from starlette.responses import Response
+from src.core.metrics import REGISTRY
+from src.core.metrics_middleware import MetricsMiddleware
+
 setup_logging()
 logger = get_logger(__name__)
 
@@ -47,6 +52,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(WAFMiddleware)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
 app.add_middleware(CORSMiddleware, **CORS_CONFIG)
+app.add_middleware(MetricsMiddleware)
 
 app.include_router(router)
 app.include_router(auth_router)
@@ -60,3 +66,26 @@ def health_check():
         Diccionario con el estado de la aplicación.
     """
     return {"status": "ok", "app": settings.app_name}
+
+@app.get("/metrics", include_in_schema=False)
+def metrics():
+    """
+    Endpoint que expone las métricas en formato Prometheus.
+    Consulta la DB para actualizar los gauges antes de responder.
+
+    **Returns:**
+        Métricas en formato texto plano compatible con Prometheus.
+    """
+    from src.core.database import SessionLocal
+    from src.services.metrics_service import refresh_job_status_metrics
+
+    db = SessionLocal()
+    try:
+        refresh_job_status_metrics(db)
+    finally:
+        db.close()
+
+    return Response(
+        content=generate_latest(REGISTRY),
+        media_type=CONTENT_TYPE_LATEST,
+    )

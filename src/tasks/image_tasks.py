@@ -6,6 +6,7 @@ from src.workers.celery_app import celery_app
 from src.core.config import settings
 from src.core.exceptions import ValidationError, StorageError
 from src.core.security import validate_file
+from src.core.metrics import JOBS_TOTAL
 from src.models.job import JobStatus
 from src.tasks.email_tasks import BaseTask, update_job_state
 from src.utils.file_utils import get_output_path
@@ -106,8 +107,8 @@ def process_image(self, job_id: str, payload: dict) -> dict:
         self.retry: Si ocurre un error inesperado durante el procesamiento.
     """
     webhook_url = payload.get("webhook_url")
-
-    update_job_state(job_id, JobStatus.RUNNING)
+    JOBS_TOTAL.labels(job_type="image").inc()
+    update_job_state(job_id, JobStatus.RUNNING, job_type="image")
 
     try:
         source_path = Path(settings.tmp_upload_dir) / payload["filename"]
@@ -134,7 +135,7 @@ def process_image(self, job_id: str, payload: dict) -> dict:
         processed.save(output_path, format=output_format.upper(), **save_kwargs)
 
         result = {"job_id": job_id, "output_path": str(output_path)}
-        update_job_state(job_id, JobStatus.SUCCESS, result=result, webhook_url=webhook_url)
+        update_job_state(job_id, JobStatus.SUCCESS, result=result, webhook_url=webhook_url, job_type="image")
 
         logger.info("image_processed", output=str(output_path))
         return result

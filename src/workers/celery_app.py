@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 from celery.app.routes import Router
 from kombu import Queue
 from celery.signals import task_prerun, task_postrun, task_failure
@@ -73,6 +74,27 @@ def create_celery_app() -> Celery:
     return app
 
 celery_app = create_celery_app()
+
+celery_app.conf.beat_schedule = {
+
+    "cleanup-tmp-files-daily": {
+        "task": "src.tasks.report_tasks.cleanup_tmp_files",
+        "schedule": crontab(hour=3, minute=0),
+        "options": {"queue": "reports"},
+    },
+
+    "health-check-every-five-minutes": {
+        "task": "src.tasks.report_tasks.system_health_check",
+        "schedule": crontab(minute="*/5"),
+        "options": {"queue": "default"},
+    },
+
+    "refresh-job-status-metrics": {
+        "task": "src.tasks.report_tasks.refresh_metrics",
+        "schedule": crontab(minute="*/1"),
+        "options": {"queue": "default"},
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Signals — hooks del ciclo de vida de cada tarea
