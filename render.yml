@@ -1,0 +1,141 @@
+services:
+  - type: web
+    name: task-queue-api
+    runtime: python
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+      - key: SECRET_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: FLOWER_USER
+        sync: false
+      - key: FLOWER_PASSWORD
+        sync: false
+      - key: GRAFANA_USER
+        sync: false
+      - key: GRAFANA_PASSWORD
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: MAX_FILE_SIZE_MB
+        value: 10
+      - key: CELERY_TASK_MAX_RETRIES
+        value: 3
+      - key: CELERY_TASK_SOFT_TIME_LIMIT
+        value: 300
+      - key: CELERY_TASK_HARD_TIME_LIMIT
+        value: 600
+      - key: TMP_UPLOAD_DIR
+        value: tmp/uploads
+      - key: TMP_OUTPUT_DIR
+        value: tmp/outputs
+
+  - type: worker
+    name: task-queue-worker
+    runtime: python
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run celery -A src.workers.celery_app.celery_app worker --loglevel=info --queues=emails,images,reports,default --concurrency=2
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+      - key: SECRET_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: FLOWER_USER
+        sync: false
+      - key: FLOWER_PASSWORD
+        sync: false
+      - key: GRAFANA_USER
+        sync: false
+      - key: GRAFANA_PASSWORD
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: MAX_FILE_SIZE_MB
+        value: 10
+      - key: CELERY_TASK_MAX_RETRIES
+        value: 3
+      - key: CELERY_TASK_SOFT_TIME_LIMIT
+        value: 300
+      - key: CELERY_TASK_HARD_TIME_LIMIT
+        value: 600
+      - key: TMP_UPLOAD_DIR
+        value: tmp/uploads
+      - key: TMP_OUTPUT_DIR
+        value: tmp/outputs
+
+  - type: worker
+    name: task-queue-beat
+    runtime: python
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run celery -A src.workers.celery_app.celery_app beat --loglevel=info
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+      - key: SECRET_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: FLOWER_USER
+        sync: false
+      - key: FLOWER_PASSWORD
+        sync: false
+      - key: GRAFANA_USER
+        sync: false
+      - key: GRAFANA_PASSWORD
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: MAX_FILE_SIZE_MB
+        value: 10
+      - key: CELERY_TASK_MAX_RETRIES
+        value: 3
+      - key: CELERY_TASK_SOFT_TIME_LIMIT
+        value: 300
+      - key: CELERY_TASK_HARD_TIME_LIMIT
+        value: 600
+      - key: TMP_UPLOAD_DIR
+        value: tmp/uploads
+      - key: TMP_OUTPUT_DIR
+        value: tmp/outputs

@@ -1,7 +1,6 @@
+import os
 from src.core.config import settings
 
-# En producción los allowed_origins deben ser dominios reales explícitos
-# En desarrollo permitimos localhost en puertos comunes
 _DEV_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:8000",
@@ -9,10 +8,23 @@ _DEV_ORIGINS = [
     "http://127.0.0.1:8000",
 ]
 
+def _get_origins() -> list[str]:
+    """
+    Retorna los orígenes permitidos según el entorno.
+    En producción lee desde la variable ALLOWED_ORIGINS.
+
+    **Returns:**
+        Lista de orígenes permitidos para CORS.
+    """
+    if settings.environment == "production":
+        origins = os.getenv("ALLOWED_ORIGINS", "")
+        return [o.strip() for o in origins.split(",") if o.strip()]
+    return _DEV_ORIGINS
+
 CORS_CONFIG = {
-    "allow_origins": _DEV_ORIGINS if settings.environment == "development" else [],
-    "allow_credentials": False,       # Sin cookies ni auth headers cross-origin
-    "allow_methods": ["GET", "POST"], # Solo los métodos que usa la API
+    "allow_origins": _get_origins(),
+    "allow_credentials": False,
+    "allow_methods": ["GET", "POST"],
     "allow_headers": ["Content-Type", "Accept"],
-    "max_age": 600,                   # Cache del preflight por 10 minutos
+    "max_age": 600,     
 }
