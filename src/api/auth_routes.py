@@ -9,6 +9,7 @@ from src.core.logging import get_logger
 from src.core.rate_limiter import limiter
 from src.schemas.auth import LoginRequest, RegisterRequest, RefreshRequest, TokenResponse, UserResponse
 from src.services.auth_service import login_user, logout_user, refresh_tokens, register_user
+from src.services.audit_service import log_action
 from src.api.dependencies import verify_host
 from src.api.auth_dependencies import require_user
 from src.models.user import User
@@ -46,6 +47,16 @@ def register(
     """
     try:
         user = register_user(db, data)
+
+        log_action(
+            db=db,
+            action="register",
+            resource="user",
+            resource_id=str(user.id),
+            ip_address=request.client.host,
+            user_agent=request.headers.get("user-agent"),
+        )
+
         return UserResponse(
             id=str(user.id),
             email=user.email,
@@ -54,6 +65,7 @@ def register(
         )
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
 
 @router.post(
     "/login",
@@ -82,9 +94,55 @@ def login(
         HTTPException 401: Si las credenciales son incorrectas.
     """
     try:
-        return login_user(db, data)
+        result = login_user(db, data)
+
+        log_action(
+            db=db,
+            action="login",
+            resource="user",
+            ip_address=request.client.host,
+            user_agent=request.headers.get("user-agent"),
+        )
+
+        return result
     except SecurityError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Cerrar sesión",
+)
+@limiter.limit("10/minute")
+def logout(
+    request: Request,
+    data: RefreshRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    db: Session = Depends(get_db),
+    _host: str = Depends(verify_host),
+) -> None:
+    """
+    Revoca el access token y el refresh token, invalidando la sesión completamente.
+
+    **Args:**
+        request: Request HTTP — requerido por slowapi.
+        data: Refresh token a revocar.
+        credentials: Access token extraído del header Authorization.
+        db: Sesión de DB inyectada por FastAPI.
+
+    **Returns:**
+        204 No Content si el logout fue exitoso.
+    """
+    logout_user(credentials.credentials, data.refresh_token)
+
+    log_action(
+        db=db,
+        action="logout",
+        resource="user",
+        ip_address=request.client.host,
+        user_agent=request.headers.get("user-agent"),
+    )
 
 @router.post(
     "/refresh",
@@ -115,31 +173,6 @@ def refresh(
         return refresh_tokens(data.refresh_token)
     except SecurityError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
-
-@router.post(
-    "/logout",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Cerrar sesión",
-)
-@limiter.limit("10/minute")
-def logout(
-    request: Request,
-    data: RefreshRequest,
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
-    _host: str = Depends(verify_host),
-) -> None:
-    """
-    Revoca el access token y el refresh token, invalidando la sesión completamente.
-
-    **Args:**
-        request: Request HTTP — requerido por slowapi.
-        data: Refresh token a revocar.
-        credentials: Access token extraído del header Authorization.
-
-    **Returns:**
-        204 No Content si el logout fue exitoso.
-    """
-    logout_user(credentials.credentials, data.refresh_token)
 
 @router.get(
     "/me",
