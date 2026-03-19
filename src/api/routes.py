@@ -15,6 +15,7 @@ from src.api.auth_dependencies import require_user
 from src.schemas.job import JobResponse, JobDetailResponse
 from src.schemas.task_payload import EmailTaskPayload, ImageTaskPayload, ReportTaskPayload
 from src.services.queue_service import enqueue_job, get_job
+from src.services.audit_service import log_action
 from src.utils.validators import validate_uuid
 from src.api.dependencies import verify_host
 
@@ -67,12 +68,26 @@ def enqueue_email(
         request: Request HTTP — requerido por slowapi para identificar el cliente.
         payload: Datos del email a enviar (destinatario, asunto, cuerpo).
         db: Sesión de DB inyectada por FastAPI.
+        current_user: Usuario autenticado inyectado por require_user.
 
     **Returns:**
         Job creado con status 202 Accepted.
     """
     logger.info("email_job_requested", recipient=payload.recipient)
-    return _handle_enqueue(db, JobType.EMAIL, payload)
+    response = _handle_enqueue(db, JobType.EMAIL, payload)
+
+    log_action(
+        db=db,
+        action="enqueue_job",
+        resource="job",
+        resource_id=str(response.id),
+        user_id=str(current_user.id),
+        ip_address=request.client.host,
+        user_agent=request.headers.get("user-agent"),
+        extra={"job_type": "email", "recipient": payload.recipient},
+    )
+
+    return response
 
 @router.post(
     "/image",
@@ -95,12 +110,26 @@ def enqueue_image(
         request: Request HTTP — requerido por slowapi para identificar el cliente.
         payload: Datos de la imagen a procesar (nombre, operaciones, formato).
         db: Sesión de DB inyectada por FastAPI.
+        current_user: Usuario autenticado inyectado por require_user.
 
     **Returns:**
         Job creado con status 202 Accepted.
     """
     logger.info("image_job_requested", filename=payload.filename)
-    return _handle_enqueue(db, JobType.IMAGE, payload)
+    response = _handle_enqueue(db, JobType.IMAGE, payload)
+
+    log_action(
+        db=db,
+        action="enqueue_job",
+        resource="job",
+        resource_id=str(response.id),
+        user_id=str(current_user.id),
+        ip_address=request.client.host,
+        user_agent=request.headers.get("user-agent"),
+        extra={"job_type": "image", "filename": payload.filename},
+    )
+
+    return response
 
 @router.post(
     "/report",
@@ -123,12 +152,26 @@ def enqueue_report(
         request: Request HTTP — requerido por slowapi para identificar el cliente.
         payload: Datos del reporte a generar (tipo, dataset, filtros).
         db: Sesión de DB inyectada por FastAPI.
+        current_user: Usuario autenticado inyectado por require_user.
 
     **Returns:**
         Job creado con status 202 Accepted.
     """
     logger.info("report_job_requested", dataset_id=payload.dataset_id)
-    return _handle_enqueue(db, JobType.REPORT, payload)
+    response = _handle_enqueue(db, JobType.REPORT, payload)
+
+    log_action(
+        db=db,
+        action="enqueue_job",
+        resource="job",
+        resource_id=str(response.id),
+        user_id=str(current_user.id),
+        ip_address=request.client.host,
+        user_agent=request.headers.get("user-agent"),
+        extra={"job_type": "report", "dataset_id": payload.dataset_id},
+    )
+
+    return response
 
 @router.get(
     "/{job_id}",
@@ -150,6 +193,7 @@ def get_job_status(
         request: Request HTTP — requerido por slowapi para identificar el cliente.
         job_id: UUID del job a consultar.
         db: Sesión de DB inyectada por FastAPI.
+        current_user: Usuario autenticado inyectado por require_user.
 
     **Returns:**
         Job con su estado actual.
@@ -190,6 +234,7 @@ def get_job_detail(
         request: Request HTTP — requerido por slowapi para identificar el cliente.
         job_id: UUID del job a consultar.
         db: Sesión de DB inyectada por FastAPI.
+        current_user: Usuario autenticado inyectado por require_user.
 
     **Returns:**
         Job con payload, resultado y estado completo.
