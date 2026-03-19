@@ -10,6 +10,8 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
+    allowed_origins: str = "" 
+
     # App
     app_name: str = "Task Queue System"
     environment: str = Field(default="development", pattern="^(development|staging|production)$")
