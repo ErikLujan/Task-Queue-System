@@ -10,6 +10,7 @@ class BasePayload(BaseModel):
     model_config = {"str_strip_whitespace": True, "frozen": True}
 
     webhook_url: Optional[AnyHttpUrl] = None # --> URL Opcional para las notificaciones
+    priority: int = Field(default=5, ge=0, le=9)  # --> 0 = más alta, 9 = más baja
 
     @model_validator(mode="before")
     @classmethod

@@ -1,4 +1,5 @@
 import uuid
+
 from enum import Enum
 from sqlalchemy import String, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -44,6 +45,7 @@ class Job(Base, TimestampMixin):
     celery_task_id: Mapped[str | None] = mapped_column(String(155), unique=True, index=True)
     job_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=JobStatus.PENDING, index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

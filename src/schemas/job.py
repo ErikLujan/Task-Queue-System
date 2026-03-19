@@ -15,6 +15,7 @@ class JobResponse(BaseModel):
     celery_task_id: str | None
     job_type: JobType
     status: JobStatus
+    priority: int
     retry_count: int
     error_message: str | None
     created_at: datetime
