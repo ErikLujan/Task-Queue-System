@@ -38,10 +38,13 @@ def enqueue_job(db: Session, job_type: JobType, payload: PayloadType) -> Job:
     if isinstance(job_type, str):
         job_type = JobType(job_type)
 
+    priority = payload.priority if hasattr(payload, "priority") else 5
+
     job = Job(
         job_type=job_type.value,
         status=JobStatus.PENDING.value,
-        payload=payload.model_dump(),
+        priority=priority,
+        payload=payload.model_dump()
     )
     db.add(job)
     db.flush()
@@ -52,6 +55,7 @@ def enqueue_job(db: Session, job_type: JobType, payload: PayloadType) -> Job:
             task_name,
             kwargs={"job_id": str(job.id), "payload": payload.model_dump()},
             queue=job_type.value + "s",
+            priority=priority
         )
         job.celery_task_id = celery_task.id
         db.commit()
