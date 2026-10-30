@@ -8,6 +8,7 @@ _DEV_ORIGINS = [
     "http://127.0.0.1:8000",
 ]
 
+
 def _get_origins() -> list[str]:
     """
     Retorna los orígenes permitidos según el entorno.
@@ -21,10 +22,11 @@ def _get_origins() -> list[str]:
         return [o.strip() for o in origins.split(",") if o.strip()]
     return _DEV_ORIGINS
 
+
 CORS_CONFIG = {
     "allow_origins": _get_origins(),
     "allow_credentials": False,
     "allow_methods": ["GET", "POST"],
     "allow_headers": ["Content-Type", "Accept"],
-    "max_age": 600,     
+    "max_age": 600,
 }

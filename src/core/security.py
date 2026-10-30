@@ -18,6 +18,7 @@ _SQL_INJECTION_PATTERN = re.compile(
 _PATH_TRAVERSAL_PATTERN = re.compile(r"\.\.[/\\]")
 _NULL_BYTE_PATTERN = re.compile(r"\x00")
 
+
 def sanitize_string(value: str, field_name: str = "input") -> str:
     """
     Sanitiza un string detectando patrones de inyección SQL, path traversal y null bytes.
@@ -41,10 +42,13 @@ def sanitize_string(value: str, field_name: str = "input") -> str:
         raise SecurityError(f"Input inválido en campo '{field_name}'.")
 
     if _SQL_INJECTION_PATTERN.search(value):
-        logger.warning("sql_injection_attempt", field=field_name, value_preview=value[:30])
+        logger.warning(
+            "sql_injection_attempt", field=field_name, value_preview=value[:30]
+        )
         raise SecurityError(f"Input inválido en campo '{field_name}'.")
 
     return value
+
 
 def validate_file(file_path: Path, expected_content_types: list[str]) -> None:
     """
@@ -82,6 +86,7 @@ def validate_file(file_path: Path, expected_content_types: list[str]) -> None:
             f"Permitidos: {expected_content_types}"
         )
 
+
 def secure_filename(filename: str) -> str:
     """
     Genera un nombre de archivo seguro eliminando caracteres peligrosos
@@ -105,5 +110,5 @@ def secure_filename(filename: str) -> str:
     if not stem:
         raise ValidationError("El nombre del archivo es inválido.")
 
-    unique_hash = hashlib.sha1(os.urandom(16)).hexdigest()[:8]
+    unique_hash = hashlib.sha256(os.urandom(16), usedforsecurity=False).hexdigest()[:8]
     return f"{stem}_{unique_hash}.{suffix}"

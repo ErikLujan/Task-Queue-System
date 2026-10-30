@@ -4,6 +4,7 @@ from src.core.security import sanitize_string, secure_filename, validate_file
 from src.core.exceptions import SecurityError, ValidationError
 from pathlib import Path
 
+
 class TestSanitizeString:
     """
     Tests para la función de sanitización de strings.
@@ -50,6 +51,7 @@ class TestSanitizeString:
         """
         with pytest.raises(SecurityError, match="campo_test"):
             sanitize_string("' OR '1'='1", field_name="campo_test")
+
 
 class TestSecureFilename:
     """

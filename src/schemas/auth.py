@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from src.core.security import sanitize_string
 
+
 class RegisterRequest(BaseModel):
     """
     Schema de entrada para el registro de un nuevo usuario.
@@ -26,9 +27,9 @@ class RegisterRequest(BaseModel):
         **Raises:**
             ValueError: Si la contraseña no tiene la complejidad requerida.
         """
-        has_upper  = any(c.isupper() for c in value)
-        has_lower  = any(c.islower() for c in value)
-        has_digit  = any(c.isdigit() for c in value)
+        has_upper = any(c.isupper() for c in value)
+        has_lower = any(c.islower() for c in value)
+        has_digit = any(c.isdigit() for c in value)
         has_symbol = any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in value)
 
         if not all([has_upper, has_lower, has_digit, has_symbol]):
@@ -37,6 +38,7 @@ class RegisterRequest(BaseModel):
                 "una minúscula, un número y un símbolo."
             )
         return value
+
 
 class LoginRequest(BaseModel):
     """

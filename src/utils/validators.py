@@ -8,6 +8,7 @@ _UUID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+
 def validate_uuid(value: str) -> uuid.UUID:
     """
     Valida y convierte un string a UUID v4.
@@ -24,6 +25,7 @@ def validate_uuid(value: str) -> uuid.UUID:
     if not _UUID_PATTERN.match(value):
         raise ValidationError(f"Formato de UUID inválido: '{value}'")
     return uuid.UUID(value)
+
 
 def validate_pagination(page: int, page_size: int) -> tuple[int, int]:
     """

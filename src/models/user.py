@@ -6,12 +6,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.base import Base, TimestampMixin
 
+
 class UserRole(str, Enum):
     """
     Roles disponibles en el sistema.
     """
-    USER  = "user"
+
+    USER = "user"
     ADMIN = "admin"
+
 
 class User(Base, TimestampMixin):
     """
@@ -26,7 +29,9 @@ class User(Base, TimestampMixin):
         primary_key=True,
         default=uuid.uuid4,
     )
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(
+        String(255), unique=True, index=True, nullable=False
+    )
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default=UserRole.USER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

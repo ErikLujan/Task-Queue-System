@@ -4,6 +4,7 @@ import pytest
 from src.utils.validators import validate_uuid, validate_pagination
 from src.core.exceptions import ValidationError
 
+
 class TestValidateUUID:
     """
     Tests para la validación de UUIDs.
@@ -38,6 +39,7 @@ class TestValidateUUID:
         """
         with pytest.raises(ValidationError):
             validate_uuid("")
+
 
 class TestValidatePagination:
     """

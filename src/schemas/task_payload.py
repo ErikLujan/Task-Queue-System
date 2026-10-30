@@ -1,6 +1,15 @@
-from pydantic import BaseModel, EmailStr, Field, AnyHttpUrl, field_validator, model_validator, model_serializer
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    AnyHttpUrl,
+    field_validator,
+    model_validator,
+    model_serializer,
+)
 from typing import Optional
 from src.core.security import sanitize_string
+
 
 class BasePayload(BaseModel):
     """
@@ -9,7 +18,7 @@ class BasePayload(BaseModel):
 
     model_config = {"str_strip_whitespace": True, "frozen": True}
 
-    webhook_url: Optional[AnyHttpUrl] = None # --> URL Opcional para las notificaciones
+    webhook_url: Optional[AnyHttpUrl] = None  # --> URL Opcional para las notificaciones
     priority: int = Field(default=5, ge=0, le=9)  # --> 0 = más alta, 9 = más baja
 
     @model_validator(mode="before")
@@ -25,7 +34,7 @@ class BasePayload(BaseModel):
             k: sanitize_string(v, field_name=k) if isinstance(v, str) else v
             for k, v in values.items()
         }
-    
+
     def model_dump(self, **kwargs) -> dict:
         """
         Sobreescribe model_dump para convertir AnyHttpUrl a string plano
@@ -39,6 +48,7 @@ class BasePayload(BaseModel):
             data["webhook_url"] = str(data["webhook_url"])
         return data
 
+
 class EmailTaskPayload(BasePayload):
     """
     Payload para tareas de envío de email.
@@ -48,6 +58,7 @@ class EmailTaskPayload(BasePayload):
     subject: str = Field(min_length=1, max_length=150)
     body: str = Field(min_length=1, max_length=5000)
     retry_on_failure: bool = True
+
 
 class ImageTaskPayload(BasePayload):
     """
@@ -76,8 +87,11 @@ class ImageTaskPayload(BasePayload):
         allowed = {"resize", "grayscale", "rotate", "flip", "compress"}
         invalid = set(ops) - allowed
         if invalid:
-            raise ValueError(f"Operaciones no permitidas: {invalid}. Permitidas: {allowed}")
+            raise ValueError(
+                f"Operaciones no permitidas: {invalid}. Permitidas: {allowed}"
+            )
         return ops
+
 
 class ReportTaskPayload(BasePayload):
     """

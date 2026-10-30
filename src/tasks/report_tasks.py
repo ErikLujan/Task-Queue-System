@@ -1,5 +1,4 @@
 import csv
-import uuid
 from pathlib import Path
 
 from src.workers.celery_app import celery_app
@@ -7,15 +6,17 @@ from src.core.config import settings
 from src.core.exceptions import ValidationError
 from src.core.metrics import JOBS_TOTAL
 from src.models.job import JobStatus
-from src.tasks.email_tasks import BaseTask, update_job_state
+from src.tasks.email_tasks import BaseTask, _update_job_state_async
 from src.services.storage_service import cleanup_directory
+from src.services.metrics_service import refresh_job_status_metrics
 from src.utils.file_utils import get_output_path
-from src.monitoring.health import full_health_report
 from src.core.logging import get_logger
+from src.core.database import get_worker_db
 
 logger = get_logger(__name__)
 
 _REPORT_HANDLERS: dict[str, callable] = {}
+
 
 def _register_report(format_name: str):
     """
@@ -27,10 +28,13 @@ def _register_report(format_name: str):
     **Returns:**
         Decorador que registra la función en _REPORT_HANDLERS.
     """
+
     def decorator(fn):
         _REPORT_HANDLERS[format_name] = fn
         return fn
+
     return decorator
+
 
 @_register_report("csv")
 def _generate_csv(job_id: str, dataset_id: str, filters: dict) -> Path:
@@ -56,6 +60,7 @@ def _generate_csv(job_id: str, dataset_id: str, filters: dict) -> Path:
         writer.writerows(rows)
     return output_path
 
+
 @_register_report("pdf")
 def _generate_pdf(job_id: str, dataset_id: str, filters: dict) -> Path:
     """
@@ -72,6 +77,7 @@ def _generate_pdf(job_id: str, dataset_id: str, filters: dict) -> Path:
     output_path = get_output_path(f"{job_id}.pdf")
     output_path.write_text(f"Reporte PDF — dataset: {dataset_id}")
     return output_path
+
 
 @_register_report("excel")
 def _generate_excel(job_id: str, dataset_id: str, filters: dict) -> Path:
@@ -90,13 +96,14 @@ def _generate_excel(job_id: str, dataset_id: str, filters: dict) -> Path:
     output_path.write_text(f"Reporte Excel — dataset: {dataset_id}")
     return output_path
 
+
 @celery_app.task(
     bind=True,
     base=BaseTask,
     queue="reports",
     name="src.tasks.report_tasks.generate_report",
 )
-def generate_report(self, job_id: str, payload: dict) -> dict:
+async def generate_report(self, job_id: str, payload: dict) -> dict:
     """
     Genera un reporte en el formato solicitado de forma asíncrona.
     Actualiza el estado del job en DB en cada etapa del procesamiento.
@@ -114,7 +121,7 @@ def generate_report(self, job_id: str, payload: dict) -> dict:
     """
     webhook_url = payload.get("webhook_url")
     JOBS_TOTAL.labels(job_type="report").inc()
-    update_job_state(job_id, JobStatus.RUNNING, job_type="report")
+    await _update_job_state_async(job_id, JobStatus.RUNNING, job_type="report")
 
     try:
         report_type = payload["report_type"]
@@ -130,7 +137,13 @@ def generate_report(self, job_id: str, payload: dict) -> dict:
         )
 
         result = {"job_id": job_id, "output_path": str(output_path)}
-        update_job_state(job_id, JobStatus.SUCCESS, result=result, webhook_url=webhook_url, job_type="report")
+        await _update_job_state_async(
+            job_id,
+            JobStatus.SUCCESS,
+            result=result,
+            webhook_url=webhook_url,
+            job_type="report",
+        )
 
         logger.info("report_generated", format=report_type)
         return result
@@ -140,7 +153,8 @@ def generate_report(self, job_id: str, payload: dict) -> dict:
 
     except Exception as exc:
         logger.warning("report_generation_failed", error=str(exc))
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries)
+        raise self.retry(exc=exc, countdown=2**self.request.retries)
+
 
 @celery_app.task(
     name="src.tasks.report_tasks.cleanup_tmp_files",
@@ -154,10 +168,15 @@ def cleanup_tmp_files() -> dict:
     **Returns:**
         Diccionario con la cantidad de archivos eliminados por directorio.
     """
-    deleted_uploads = cleanup_directory(Path(settings.tmp_upload_dir), older_than_hours=24)
-    deleted_outputs = cleanup_directory(Path(settings.tmp_output_dir), older_than_hours=24)
+    deleted_uploads = cleanup_directory(
+        Path(settings.tmp_upload_dir), older_than_hours=24
+    )
+    deleted_outputs = cleanup_directory(
+        Path(settings.tmp_output_dir), older_than_hours=24
+    )
     logger.info("cleanup_completed", uploads=deleted_uploads, outputs=deleted_outputs)
     return {"uploads_deleted": deleted_uploads, "outputs_deleted": deleted_outputs}
+
 
 @celery_app.task(
     name="src.tasks.report_tasks.system_health_check",
@@ -175,11 +194,12 @@ def system_health_check() -> dict:
     logger.info("health_check", report=report)
     return report
 
+
 @celery_app.task(
     name="src.tasks.report_tasks.refresh_metrics",
     queue="default",
 )
-def refresh_metrics() -> dict:
+async def refresh_metrics() -> dict:
     """
     Actualiza los gauges de Prometheus con el estado actual de los jobs en DB.
     Ejecutada periódicamente por Celery Beat cada minuto.
@@ -187,10 +207,7 @@ def refresh_metrics() -> dict:
     **Returns:**
         Diccionario confirmando la actualización.
     """
-    from src.services.metrics_service import refresh_job_status_metrics
-    from src.core.database import get_worker_db
-
-    with get_worker_db() as db:
-        refresh_job_status_metrics(db)
+    async with get_worker_db() as db:
+        await refresh_job_status_metrics(db)
 
     return {"status": "metrics_refreshed"}

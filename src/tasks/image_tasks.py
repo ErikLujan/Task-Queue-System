@@ -4,11 +4,11 @@ from PIL import Image, UnidentifiedImageError
 
 from src.workers.celery_app import celery_app
 from src.core.config import settings
-from src.core.exceptions import ValidationError, StorageError
+from src.core.exceptions import ValidationError
 from src.core.security import validate_file
 from src.core.metrics import JOBS_TOTAL
 from src.models.job import JobStatus
-from src.tasks.email_tasks import BaseTask, update_job_state
+from src.tasks.email_tasks import BaseTask, _update_job_state_async
 from src.utils.file_utils import get_output_path
 from src.core.logging import get_logger
 
@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 
 _MAX_IMAGE_PIXELS = 50_000_000
 _OPERATION_HANDLERS: dict[str, callable] = {}
+
 
 def _register_operation(name: str):
     """
@@ -27,20 +28,25 @@ def _register_operation(name: str):
     **Returns:**
         Decorador que registra la función en _OPERATION_HANDLERS.
     """
+
     def decorator(fn):
         _OPERATION_HANDLERS[name] = fn
         return fn
+
     return decorator
+
 
 @_register_operation("grayscale")
 def _apply_grayscale(img: Image.Image, **_) -> Image.Image:
     """Convierte la imagen a escala de grises."""
     return img.convert("L")
 
+
 @_register_operation("flip")
 def _apply_flip(img: Image.Image, **_) -> Image.Image:
     """Voltea la imagen horizontalmente."""
     return img.transpose(Image.FLIP_LEFT_RIGHT)
+
 
 @_register_operation("rotate")
 def _apply_rotate(img: Image.Image, degrees: int = 90, **_) -> Image.Image:
@@ -58,8 +64,11 @@ def _apply_rotate(img: Image.Image, degrees: int = 90, **_) -> Image.Image:
         raise ValidationError("Rotación permitida: 90, 180 o 270 grados.")
     return img.rotate(degrees, expand=True)
 
+
 @_register_operation("resize")
-def _apply_resize(img: Image.Image, width: int = 800, height: int = 600, **_) -> Image.Image:
+def _apply_resize(
+    img: Image.Image, width: int = 800, height: int = 600, **_
+) -> Image.Image:
     """
     Redimensiona la imagen al tamaño indicado.
 
@@ -78,10 +87,12 @@ def _apply_resize(img: Image.Image, width: int = 800, height: int = 600, **_) ->
         raise ValidationError("Dimensiones fuera del rango permitido (1–4000px).")
     return img.resize((width, height), Image.LANCZOS)
 
+
 @_register_operation("compress")
 def _apply_compress(img: Image.Image, **_) -> Image.Image:
     """Devuelve la imagen sin modificación — la compresión se aplica al guardar."""
     return img
+
 
 @celery_app.task(
     bind=True,
@@ -89,7 +100,7 @@ def _apply_compress(img: Image.Image, **_) -> Image.Image:
     queue="images",
     name="src.tasks.image_tasks.process_image",
 )
-def process_image(self, job_id: str, payload: dict) -> dict:
+async def process_image(self, job_id: str, payload: dict) -> dict:
     """
     Aplica una secuencia de operaciones sobre una imagen de forma asíncrona.
     Actualiza el estado del job en DB en cada etapa del procesamiento.
@@ -108,7 +119,7 @@ def process_image(self, job_id: str, payload: dict) -> dict:
     """
     webhook_url = payload.get("webhook_url")
     JOBS_TOTAL.labels(job_type="image").inc()
-    update_job_state(job_id, JobStatus.RUNNING, job_type="image")
+    await _update_job_state_async(job_id, JobStatus.RUNNING, job_type="image")
 
     try:
         source_path = Path(settings.tmp_upload_dir) / payload["filename"]
@@ -135,7 +146,13 @@ def process_image(self, job_id: str, payload: dict) -> dict:
         processed.save(output_path, format=output_format.upper(), **save_kwargs)
 
         result = {"job_id": job_id, "output_path": str(output_path)}
-        update_job_state(job_id, JobStatus.SUCCESS, result=result, webhook_url=webhook_url, job_type="image")
+        await _update_job_state_async(
+            job_id,
+            JobStatus.SUCCESS,
+            result=result,
+            webhook_url=webhook_url,
+            job_type="image",
+        )
 
         logger.info("image_processed", output=str(output_path))
         return result
@@ -146,4 +163,4 @@ def process_image(self, job_id: str, payload: dict) -> dict:
 
     except Exception as exc:
         logger.warning("image_processing_failed", error=str(exc))
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries)
+        raise self.retry(exc=exc, countdown=2**self.request.retries)

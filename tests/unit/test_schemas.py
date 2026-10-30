@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError as PydanticValidationError
-from src.schemas.task_payload import EmailTaskPayload, ImageTaskPayload, ReportTaskPayload
+from src.schemas.task_payload import (
+    EmailTaskPayload,
+    ImageTaskPayload,
+    ReportTaskPayload,
+)
 from src.core.exceptions import SecurityError
+
 
 class TestEmailTaskPayload:
     """
@@ -48,6 +53,7 @@ class TestEmailTaskPayload:
                 body="Cuerpo",
             )
 
+
 class TestImageTaskPayload:
     """
     Tests para el schema de payload de tareas de procesamiento de imágenes.
@@ -79,7 +85,9 @@ class TestImageTaskPayload:
         Un formato de salida no soportado debe lanzar error de validación.
         """
         with pytest.raises(PydanticValidationError):
-            ImageTaskPayload(filename="foto.jpg", operations=["flip"], output_format="bmp")
+            ImageTaskPayload(
+                filename="foto.jpg", operations=["flip"], output_format="bmp"
+            )
 
     def test_lista_operaciones_vacia_lanza_error(self):
         """
@@ -87,6 +95,7 @@ class TestImageTaskPayload:
         """
         with pytest.raises(PydanticValidationError):
             ImageTaskPayload(filename="foto.jpg", operations=[])
+
 
 class TestReportTaskPayload:
     """

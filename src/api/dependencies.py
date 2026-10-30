@@ -3,6 +3,7 @@ from src.core.config import settings
 
 _EXCLUDED_PATHS = ["/metrics", "/health"]
 
+
 def verify_host(request: Request, host: str = Header(...)) -> str:
     """
     Valida que el header Host pertenezca a los hosts permitidos.

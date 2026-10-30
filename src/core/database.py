@@ -1,51 +1,65 @@
-from contextlib import contextmanager
-from typing import Generator
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from src.core.config import settings
 
-engine = create_engine(
-    str(settings.database_url),
-    pool_size=settings.db_pool_size,
-    max_overflow=settings.db_max_overflow,
-    pool_pre_ping=True,  # --> Verifica la conexión antes de usarla
+# Convert postgresql:// to postgresql+asyncpg:// for async driver
+database_url = str(settings.database_url).replace(
+    "postgresql://", "postgresql+asyncpg://", 1
 )
 
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+engine = create_async_engine(
+    database_url,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_pre_ping=True,  # Verifica la conexión antes de usarla
+)
 
-def get_db() -> Generator[Session, None, None]:
+SessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False,
+)
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    Generador que provee una sesión de DB por request y garantiza su cierre.
+    Async generator que provee una sesión de DB por request y garantiza su cierre.
     Usado como dependencia de FastAPI con Depends().
 
     **Yields:**
-        Sesión activa de SQLAlchemy.
+        Sesión activa de SQLAlchemy AsyncSession.
     """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    async with SessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
-@contextmanager
-def get_worker_db() -> Generator[Session, None, None]:
+
+@asynccontextmanager
+async def get_worker_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    Context manager que provee una sesión de DB para uso en workers de Celery.
+    Async context manager que provee una sesión de DB para uso en workers de Celery.
     A diferencia de get_db(), no depende del ciclo de vida de FastAPI.
 
     **Yields:**
-        Sesión activa de SQLAlchemy.
+        Sesión activa de SQLAlchemy AsyncSession.
 
     **Raises:**
         Exception: Cualquier error durante la sesión hace rollback automático.
     """
-    db = SessionLocal()
-    try:
-        yield db
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    async with SessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise

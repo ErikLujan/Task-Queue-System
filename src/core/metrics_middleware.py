@@ -5,6 +5,7 @@ from src.core.metrics import HTTP_REQUESTS_TOTAL, HTTP_REQUEST_DURATION_SECONDS
 
 _EXCLUDED_PATHS = {"/metrics", "/health", "/docs", "/redoc", "/openapi.json"}
 
+
 class MetricsMiddleware(BaseHTTPMiddleware):
     """
     Middleware que registra métricas HTTP de cada request.
@@ -27,7 +28,9 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         if path in _EXCLUDED_PATHS:
             return await call_next(request)
 
-        normalized_path = _normalize_path(path) # --> Normaliza paths con IDs para no generar una métrica por cada UUID
+        normalized_path = _normalize_path(
+            path
+        )  # --> Normaliza paths con IDs para no generar una métrica por cada UUID
 
         start = time.perf_counter()
         response = await call_next(request)
@@ -46,6 +49,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
         return response
 
+
 def _normalize_path(path: str) -> str:
     """
     Reemplaza segmentos que parecen UUIDs por un placeholder genérico.
@@ -58,6 +62,7 @@ def _normalize_path(path: str) -> str:
         Path con UUIDs reemplazados por {id}.
     """
     import re
+
     uuid_pattern = re.compile(
         r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
         re.IGNORECASE,

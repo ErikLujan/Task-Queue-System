@@ -1,14 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from src.core.auth import decode_token, revoke_token
 from src.core.database import get_db
 from src.core.exceptions import ValidationError, SecurityError
 from src.core.logging import get_logger
 from src.core.rate_limiter import limiter
-from src.schemas.auth import LoginRequest, RegisterRequest, RefreshRequest, TokenResponse, UserResponse
-from src.services.auth_service import login_user, logout_user, refresh_tokens, register_user
+from src.schemas.auth import (
+    LoginRequest,
+    RegisterRequest,
+    RefreshRequest,
+    TokenResponse,
+    UserResponse,
+)
+from src.services.auth_service import (
+    login_user,
+    logout_user,
+    refresh_tokens,
+    register_user,
+)
 from src.services.audit_service import log_action
 from src.api.dependencies import verify_host
 from src.api.auth_dependencies import require_user
@@ -18,6 +28,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 _bearer = HTTPBearer()
 
+
 @router.post(
     "/register",
     response_model=UserResponse,
@@ -25,10 +36,10 @@ _bearer = HTTPBearer()
     summary="Registrar nuevo usuario",
 )
 @limiter.limit("5/minute")
-def register(
+async def register(
     request: Request,
     data: RegisterRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     _host: str = Depends(verify_host),
 ) -> UserResponse:
     """
@@ -46,14 +57,15 @@ def register(
         HTTPException 400: Si el email ya está registrado.
     """
     try:
-        user = register_user(db, data)
+        user = await register_user(db, data)
 
-        log_action(
+        client_host = request.client.host if request.client else "unknown"
+        await log_action(
             db=db,
             action="register",
             resource="user",
             resource_id=str(user.id),
-            ip_address=request.client.host,
+            ip_address=client_host,
             user_agent=request.headers.get("user-agent"),
         )
 
@@ -73,10 +85,10 @@ def register(
     summary="Iniciar sesión",
 )
 @limiter.limit("10/minute")
-def login(
+async def login(
     request: Request,
     data: LoginRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     _host: str = Depends(verify_host),
 ) -> TokenResponse:
     """
@@ -94,13 +106,14 @@ def login(
         HTTPException 401: Si las credenciales son incorrectas.
     """
     try:
-        result = login_user(db, data)
+        result = await login_user(db, data)
 
-        log_action(
+        client_host = request.client.host if request.client else "unknown"
+        await log_action(
             db=db,
             action="login",
             resource="user",
-            ip_address=request.client.host,
+            ip_address=client_host,
             user_agent=request.headers.get("user-agent"),
         )
 
@@ -115,11 +128,11 @@ def login(
     summary="Cerrar sesión",
 )
 @limiter.limit("10/minute")
-def logout(
+async def logout(
     request: Request,
     data: RefreshRequest,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     _host: str = Depends(verify_host),
 ) -> None:
     """
@@ -136,13 +149,15 @@ def logout(
     """
     logout_user(credentials.credentials, data.refresh_token)
 
-    log_action(
+    client_host = request.client.host if request.client else "unknown"
+    await log_action(
         db=db,
         action="logout",
         resource="user",
-        ip_address=request.client.host,
+        ip_address=client_host,
         user_agent=request.headers.get("user-agent"),
     )
+
 
 @router.post(
     "/refresh",
@@ -150,7 +165,7 @@ def logout(
     summary="Refrescar access token",
 )
 @limiter.limit("10/minute")
-def refresh(
+async def refresh(
     request: Request,
     data: RefreshRequest,
     _host: str = Depends(verify_host),
@@ -174,13 +189,16 @@ def refresh(
     except SecurityError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
 
+
 @router.get(
     "/me",
     response_model=UserResponse,
     summary="Obtener datos del usuario autenticado",
 )
 @limiter.limit("60/minute")
-def me(request: Request, current_user: User = Depends(require_user)) -> UserResponse:
+async def me(
+    request: Request, current_user: User = Depends(require_user)
+) -> UserResponse:
     """
     Retorna los datos del usuario autenticado a partir de su access token.
 

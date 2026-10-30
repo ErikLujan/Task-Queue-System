@@ -13,11 +13,12 @@ logger = get_logger(__name__)
 
 # Expiración diferenciada — access token corto, refresh token largo
 _ACCESS_TOKEN_EXPIRE_MINUTES = 15
-_REFRESH_TOKEN_EXPIRE_DAYS   = 7
-_ALGORITHM                   = "HS256"
+_REFRESH_TOKEN_EXPIRE_DAYS = 7
+_ALGORITHM = "HS256"
 
 # Cliente Redis para blacklist de tokens revocados
 _redis_client = redis.from_url(str(settings.redis_url), decode_responses=True)
+
 
 def hash_password(password: str) -> str:
     """
@@ -34,6 +35,7 @@ def hash_password(password: str) -> str:
     salt = _bcrypt.gensalt(rounds=12)
     return _bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Compara una contraseña en texto plano contra su hash almacenado.
@@ -48,6 +50,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     password_bytes = plain_password.encode("utf-8")[:72]
     return _bcrypt.checkpw(password_bytes, hashed_password.encode("utf-8"))
+
 
 def _create_token(
     subject: str,
@@ -66,18 +69,21 @@ def _create_token(
         JWT firmado como string.
     """
     if token_type == "access":
-        expire = datetime.now(timezone.utc) + timedelta(minutes=_ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=_ACCESS_TOKEN_EXPIRE_MINUTES
+        )
     else:
         expire = datetime.now(timezone.utc) + timedelta(days=_REFRESH_TOKEN_EXPIRE_DAYS)
 
     payload = {
-        "sub":  subject,
+        "sub": subject,
         "role": role,
         "type": token_type,
-        "exp":  expire,
-        "iat":  datetime.now(timezone.utc),
+        "exp": expire,
+        "iat": datetime.now(timezone.utc),
     }
     return jwt.encode(payload, settings.secret_key, algorithm=_ALGORITHM)
+
 
 def create_token_pair(user_id: str, role: str) -> tuple[str, str]:
     """
@@ -90,9 +96,10 @@ def create_token_pair(user_id: str, role: str) -> tuple[str, str]:
     **Returns:**
         Tupla (access_token, refresh_token).
     """
-    access_token  = _create_token(user_id, role, "access")
+    access_token = _create_token(user_id, role, "access")
     refresh_token = _create_token(user_id, role, "refresh")
     return access_token, refresh_token
+
 
 def decode_token(token: str, expected_type: Literal["access", "refresh"]) -> dict:
     """
@@ -121,6 +128,7 @@ def decode_token(token: str, expected_type: Literal["access", "refresh"]) -> dic
 
     return payload
 
+
 def revoke_token(token: str) -> None:
     """
     Agrega un token a la blacklist en Redis con TTL igual a su tiempo restante.
@@ -143,6 +151,7 @@ def revoke_token(token: str) -> None:
             logger.info("token_revoked", user_id=payload.get("sub"))
     except JWTError:
         pass
+
 
 def _is_token_blacklisted(token: str) -> bool:
     """

@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import decode_token
 from src.core.database import get_db
@@ -9,9 +9,10 @@ from src.models.user import User, UserRole
 
 _bearer = HTTPBearer()
 
-def _get_current_user(
+
+async def _get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
     """
     Extrae y valida el access token del header Authorization.
@@ -19,7 +20,7 @@ def _get_current_user(
 
     **Args:**
         credentials: Token extraído del header Authorization.
-        db: Sesión activa de SQLAlchemy.
+        db: Sesión activa de SQLAlchemy AsyncSession.
 
     **Returns:**
         Instancia del usuario autenticado.
@@ -33,13 +34,18 @@ def _get_current_user(
     except SecurityError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
 
-    user = db.get(User, payload["sub"])
+    user = await db.get(User, payload["sub"])
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado."
+        )
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo."
+        )
 
     return user
+
 
 def require_user(user: User = Depends(_get_current_user)) -> User:
     """
@@ -52,6 +58,7 @@ def require_user(user: User = Depends(_get_current_user)) -> User:
         El mismo usuario si está autenticado.
     """
     return user
+
 
 def require_admin(user: User = Depends(_get_current_user)) -> User:
     """

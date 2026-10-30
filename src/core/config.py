@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, RedisDsn, PostgresDsn
 
+
 class Settings(BaseSettings):
     """Configuración central de la aplicación cargada desde variables de entorno."""
 
@@ -10,11 +11,13 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    allowed_origins: str = "" 
+    allowed_origins: str = ""
 
     # App
     app_name: str = "Task Queue System"
-    environment: str = Field(default="development", pattern="^(development|staging|production)$")
+    environment: str = Field(
+        default="development", pattern="^(development|staging|production)$"
+    )
     debug: bool = False
 
     # Redis
@@ -57,5 +60,6 @@ class Settings(BaseSettings):
     def max_file_size_bytes(self) -> int:
         """Retorna el tamaño máximo de archivo en bytes."""
         return self.max_file_size_mb * 1024 * 1024
+
 
 settings = Settings()

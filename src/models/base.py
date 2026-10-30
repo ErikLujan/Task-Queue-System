@@ -2,11 +2,14 @@ from datetime import datetime, timezone
 from sqlalchemy import DateTime
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+
 class Base(DeclarativeBase):
     """
     Clase base para todos los modelos SQLAlchemy del proyecto.
     """
+
     pass
+
 
 class TimestampMixin:
     """

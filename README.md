@@ -17,7 +17,6 @@ flowchart TD
     Cliente["Cliente HTTP\n(Swagger UI / Postman / App)"]
 
     subgraph API["FastAPI App"]
-        WAF["WAF Middleware"]
         CORS["CORS / Security Headers"]
         RL["Rate Limiter"]
         Auth["JWT Auth"]
@@ -56,8 +55,7 @@ flowchart TD
         Flower["Flower\n:5555"]
     end
 
-    Cliente -->|HTTP Request| WAF
-    WAF --> CORS --> RL --> Auth --> Routes
+    Cliente -->|HTTP Request| CORS --> RL --> Auth --> Routes
     Routes --> Jobs
     Routes --> Users
     Routes --> AuditLogs
@@ -107,19 +105,19 @@ sequenceDiagram
 
 | Componente | Tecnología |
 |---|---|
-| API | FastAPI + Uvicorn |
+| API | FastAPI + Uvicorn (async) |
 | Autenticación | JWT (python-jose) + bcrypt |
 | Task Queue | Celery 5 |
 | Broker / Backend | Redis 7 |
 | Base de datos | PostgreSQL 16 |
-| ORM | SQLAlchemy 2 |
+| ORM | SQLAlchemy 2.x async + asyncpg |
 | Migraciones | Alembic |
 | Validaciones | Pydantic v2 |
 | Logging | structlog |
 | Métricas | Prometheus + Grafana |
 | Monitoreo de workers | Flower |
 | Gestor de paquetes | uv |
-| Contenedores | Docker + Docker Compose |
+| Contenedores | Podman + Podman Compose |
 
 ---
 
@@ -135,7 +133,6 @@ sequenceDiagram
 - Mensajes de error genéricos en login — no revela si el email existe
 
 **API (capa HTTP)**
-- WAF middleware — detecta y bloquea patrones de SQL injection, XSS, path traversal y null bytes en URL, query string y headers
 - Rate limiting por IP con límites diferenciados por endpoint
 - Políticas CORS configuradas por entorno
 - Security headers en todas las respuestas (HSTS, CSP, X-Frame-Options, etc.)
@@ -299,7 +296,7 @@ task-queue-system/
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/)
-- Docker y Docker Compose
+- Podman y Podman Compose
 
 ### 1. Clonar el repositorio
 
@@ -330,11 +327,11 @@ Editá `.env` con tus valores. Los campos que requieren valores propios están m
 uv run python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-### 4. Levantar los servicios con Docker
+### 4. Levantar los servicios con Podman
 
 ```bash
-docker compose up --build -d
-docker compose stop api
+podman compose up --build -d
+podman compose stop api
 ```
 
 Esto levanta Redis, PostgreSQL, el worker de Celery, Celery Beat, Flower, Prometheus y Grafana.
@@ -425,6 +422,25 @@ curl http://localhost:8000/jobs/{job_id} \
 |---|---|---|
 | GET | `/health` | Health check de la aplicación |
 | GET | `/metrics` | Métricas en formato Prometheus |
+
+---
+
+## Limitaciones conocidas / Roadmap
+
+El proyecto está en desarrollo activo. Estas son las limitaciones conocidas actuales:
+
+| Área | Estado | Detalle |
+|---|---|---|
+| **Type checking (mypy strict)** | ⚠️ Parcial | 100 errores preexistentes (stubs de celery/asyncpg faltantes, tipos `dict` sin parámetros, tipos de logging). No bloquean la ejecución. |
+| **Cobertura de tests** | ⚠️ 57% | Objetivo 80%. Faltan tests de integración para tasks Celery, webhook service, storage service. |
+| **Vulnerabilidades (pip-audit)** | ⚠️ 161 | Vulnerabilidades preexistentes en dependencias (pillow, cryptography, etc.). Requieren actualizaciones mayores. |
+| **Tests de integración en Windows** | ❌ 2 fallan | 2 tests de integración fallan en Windows por limitación del event loop proactor + asyncpg (pasan en Linux/CI). |
+
+**Próximos pasos planificados:**
+- Añadir tests de integración para tasks Celery y webhook service
+- Resolver errores mypy añadiendo stubs o ajustando tipos
+- Actualizar dependencias vulnerables (requiere testing de compatibilidad)
+- Evaluar migración a `uvloop` en Linux para mejor rendimiento
 
 ---
 

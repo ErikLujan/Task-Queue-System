@@ -2,6 +2,7 @@ import logging
 import structlog
 from src.core.config import settings
 
+
 def setup_logging() -> None:
     """
     Configura structlog con procesadores adecuados según el entorno.
@@ -21,7 +22,8 @@ def setup_logging() -> None:
         renderer = structlog.processors.JSONRenderer()
 
     structlog.configure(
-        processors=shared_processors + [
+        processors=shared_processors
+        + [
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),
@@ -40,6 +42,7 @@ def setup_logging() -> None:
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
     root_logger.setLevel(logging.DEBUG if settings.debug else logging.INFO)
+
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """

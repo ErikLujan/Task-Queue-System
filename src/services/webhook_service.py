@@ -1,3 +1,5 @@
+from typing import Any
+
 import httpx
 from src.core.logging import get_logger
 
@@ -8,7 +10,7 @@ _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _MAX_RETRIES = 3
 
 
-def dispatch_webhook(webhook_url: str, payload: dict) -> None:
+def dispatch_webhook(webhook_url: str, payload: dict[str, Any]) -> None:
     """
     Envía una notificación HTTP POST a la URL indicada con el resultado del job.
     Reintenta hasta 3 veces ante errores de red o timeouts.
@@ -45,6 +47,8 @@ def dispatch_webhook(webhook_url: str, payload: dict) -> None:
                 return
 
         except Exception as exc:
-            logger.warning("webhook_failed", url=webhook_url, error=str(exc), attempt=attempt)
+            logger.warning(
+                "webhook_failed", url=webhook_url, error=str(exc), attempt=attempt
+            )
 
     logger.error("webhook_exhausted", url=webhook_url, max_retries=_MAX_RETRIES)

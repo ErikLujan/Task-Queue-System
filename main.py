@@ -1,5 +1,8 @@
+import json
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from typing import AsyncGenerator
+
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -9,22 +12,27 @@ from src.core.config import settings
 from src.core.cors import CORS_CONFIG
 from src.core.logging import setup_logging, get_logger
 from src.core.rate_limiter import limiter
-from src.core.security_middleware import WAFMiddleware, SecurityHeadersMiddleware
+from src.core.security_middleware import (
+    RequestSizeLimitMiddleware,
+    SecurityHeadersMiddleware,
+)
 from src.utils.file_utils import ensure_tmp_dirs
-from src.workers.beat_schedule import register_beat_schedule
 from src.api.routes import router
 from src.api.auth_routes import router as auth_router
+from src.monitoring.health import full_health_report
 
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-from starlette.responses import Response
 from src.core.metrics import REGISTRY
 from src.core.metrics_middleware import MetricsMiddleware
+from src.core.database import get_db, get_worker_db
+from src.services.metrics_service import refresh_job_status_metrics
 
 setup_logging()
 logger = get_logger(__name__)
 
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Maneja el ciclo de vida de la aplicación.
     Se ejecuta al arrancar y al apagar el servidor.
@@ -48,8 +56,8 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Middlewares
+app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(WAFMiddleware)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
 app.add_middleware(CORSMiddleware, **CORS_CONFIG)
 app.add_middleware(MetricsMiddleware)
@@ -57,18 +65,31 @@ app.add_middleware(MetricsMiddleware)
 app.include_router(router)
 app.include_router(auth_router)
 
+
 @app.get("/health", tags=["monitoring"])
-def health_check():
+async def health_check() -> Response:
     """
-    Endpoint de health check básico para load balancers y monitoreo externo.
+    Endpoint de health check que verifica dependencias reales (Redis y PostgreSQL).
 
     **Returns:**
-        Diccionario con el estado de la aplicación.
+        JSON con el estado de la aplicación y sus dependencias.
+        HTTP 200 si todo está OK, HTTP 503 si alguna dependencia falla.
     """
-    return {"status": "ok", "app": settings.app_name}
+    async for db in get_db():
+        report = await full_health_report(db)
+
+    overall_status = report["status"]
+    status_code = 200 if overall_status == "ok" else 503
+
+    return Response(
+        content=json.dumps(report),
+        status_code=status_code,
+        media_type="application/json",
+    )
+
 
 @app.get("/metrics", include_in_schema=False)
-def metrics():
+async def metrics() -> Response:
     """
     Endpoint que expone las métricas en formato Prometheus.
     Consulta la DB para actualizar los gauges antes de responder.
@@ -76,14 +97,8 @@ def metrics():
     **Returns:**
         Métricas en formato texto plano compatible con Prometheus.
     """
-    from src.core.database import SessionLocal
-    from src.services.metrics_service import refresh_job_status_metrics
-
-    db = SessionLocal()
-    try:
-        refresh_job_status_metrics(db)
-    finally:
-        db.close()
+    async with get_worker_db() as db:
+        await refresh_job_status_metrics(db)
 
     return Response(
         content=generate_latest(REGISTRY),

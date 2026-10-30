@@ -1,18 +1,21 @@
-from sqlalchemy.orm import Session
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.logging import get_logger
 from src.models.audit_log import AuditLog
 
 logger = get_logger(__name__)
 
-def log_action(
-    db: Session,
+
+async def log_action(
+    db: AsyncSession,
     action: str,
     resource: str,
     resource_id: str | None = None,
     user_id: str | None = None,
     ip_address: str | None = None,
     user_agent: str | None = None,
-    extra: dict | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> None:
     """
     Registra una acción en el log de auditoría de forma no bloqueante.
@@ -20,7 +23,7 @@ def log_action(
     interrumpir el flujo principal de la aplicación.
 
     **Args:**
-        db: Sesión activa de SQLAlchemy.
+        db: Sesión activa de SQLAlchemy AsyncSession.
         action: Acción realizada (ej: "enqueue_job", "login", "logout").
         resource: Recurso afectado (ej: "job", "user").
         resource_id: ID del recurso afectado si aplica.
@@ -40,9 +43,9 @@ def log_action(
             extra=extra,
         )
         db.add(entry)
-        db.commit()
+        await db.commit()
         logger.debug("audit_logged", action=action, resource=resource, user_id=user_id)
 
     except Exception as exc:
-        db.rollback()
+        await db.rollback()
         logger.warning("audit_log_failed", action=action, error=str(exc))

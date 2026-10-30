@@ -8,6 +8,7 @@ from src.core.security import secure_filename, validate_file
 
 logger = get_logger(__name__)
 
+
 def save_upload(source_path: Path, content_type: list[str]) -> Path:
     """
     Valida y mueve un archivo subido al directorio de uploads seguro.
@@ -36,6 +37,7 @@ def save_upload(source_path: Path, content_type: list[str]) -> Path:
     except OSError as exc:
         raise StorageError(f"No se pudo guardar el archivo: {exc}") from exc
 
+
 def delete_file(file_path: Path) -> None:
     """
     Elimina un archivo del sistema de forma segura, validando el path antes.
@@ -54,15 +56,16 @@ def delete_file(file_path: Path) -> None:
     ]
 
     if not any(str(resolved).startswith(str(b)) for b in base_dirs):
-        raise __import__("src.core.exceptions", fromlist=["SecurityError"]).SecurityError(
-            "Intento de eliminar archivo fuera del directorio permitido."
-        )
+        raise __import__(
+            "src.core.exceptions", fromlist=["SecurityError"]
+        ).SecurityError("Intento de eliminar archivo fuera del directorio permitido.")
 
     try:
         resolved.unlink(missing_ok=True)
         logger.info("file_deleted", path=str(resolved))
     except OSError as exc:
         raise StorageError(f"No se pudo eliminar el archivo: {exc}") from exc
+
 
 def cleanup_directory(directory: Path, older_than_hours: int = 24) -> int:
     """

@@ -37,3 +37,15 @@ htmlcov/
 
 # Dependencias
 requirements.txt
+
+# Reportes generados
+repomix-output.xml
+MIGRATION_BATCH*.md
+
+# Opencode
+.opencode/
+opencode.json
+
+# Documentos de agente
+AGENTS.md
+FINAL_REPORT.md

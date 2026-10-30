@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from src.models.job import JobStatus, JobType
 
+
 class JobResponse(BaseModel):
     """
     Schema de respuesta para exponer el estado de un job al cliente.
@@ -20,6 +21,7 @@ class JobResponse(BaseModel):
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+
 
 class JobDetailResponse(JobResponse):
     """

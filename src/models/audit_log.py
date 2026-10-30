@@ -5,6 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.base import Base, TimestampMixin
 
+
 class AuditLog(Base, TimestampMixin):
     """
     Registra todas las acciones relevantes realizadas en el sistema.
